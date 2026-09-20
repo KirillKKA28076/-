@@ -1,0 +1,10 @@
+{
+  "comment": "Merge these registry dependencies into Packages/manifest.json through Unity Package Manager; do not hand-edit packages-lock.json.",
+  "dependencies": {
+    "com.unity.addressables": "1.21.21",
+    "com.unity.cinemachine": "2.9.7",
+    "com.unity.localization": "1.4.5",
+    "com.unity.probuilder": "5.2.2",
+    "com.unity.recorder": "4.0.2"
+  }
+}
