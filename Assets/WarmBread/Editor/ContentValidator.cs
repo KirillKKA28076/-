@@ -13,6 +13,18 @@ namespace WarmBread.Editor
         private const string ScenePath = "Assets/WarmBread/Scenes/Bakery_Street.unity";
         private const string FontPath = "Assets/Resources/Fonts/BreadSans.ttf";
 
+        private static readonly string[] RequiredScripts =
+        {
+            "Assets/WarmBread/Scripts/Core/CampaignRules.cs",
+            "Assets/WarmBread/Scripts/Core/GameSession.cs",
+            "Assets/WarmBread/Scripts/Core/SaveSystem.cs",
+            "Assets/WarmBread/Scripts/World/ProceduralMeshFactory.cs",
+            "Assets/WarmBread/Scripts/World/ModelFactory.cs",
+            "Assets/WarmBread/Scripts/World/StockDisplay.cs",
+            "Assets/WarmBread/Scripts/World/WorldBuilder.cs",
+            "Assets/WarmBread/Scripts/UI/GameUI.cs"
+        };
+
         [MenuItem("Тёплый хлеб/4. Проверить проект")]
         public static void ValidateFromMenu()
         {
@@ -25,6 +37,8 @@ namespace WarmBread.Editor
             ValidateRequiredAssets(errors);
             ValidateProducts(errors);
             ValidateCustomers(errors);
+            ValidateCampaign(errors);
+            ValidateProceduralMeshes(errors);
             ValidateCurrentScene(errors);
 
             foreach (var error in errors)
@@ -34,7 +48,9 @@ namespace WarmBread.Editor
 
             if (errors.Count == 0 && logSuccess)
             {
-                Debug.Log("[WarmBread] Проверка пройдена: сцена, каталог, покупатели, шрифты и ссылки в порядке.");
+                Debug.Log(
+                    "[WarmBread] Проверка пройдена: сцена, кампания, модели, каталог, " +
+                    "покупатели, шрифты и ссылки в порядке.");
             }
 
             return errors.Count;
@@ -50,6 +66,14 @@ namespace WarmBread.Editor
             if (AssetDatabase.LoadAssetAtPath<Font>(FontPath) == null)
             {
                 errors.Add("Не найден кириллический шрифт: " + FontPath);
+            }
+
+            foreach (var path in RequiredScripts)
+            {
+                if (AssetDatabase.LoadAssetAtPath<MonoScript>(path) == null)
+                {
+                    errors.Add("Не найден обязательный игровой скрипт: " + path);
+                }
             }
 
             if (!EditorBuildSettings.scenes.Any(scene =>
@@ -68,6 +92,11 @@ namespace WarmBread.Editor
             {
                 errors.Add("Не найден shader Universal Render Pipeline/Particles/Unlit.");
             }
+
+            if (SaveData.CurrentVersion < 3)
+            {
+                errors.Add("Формат сохранений должен поддерживать кампанию версии 3.");
+            }
         }
 
         private static void ValidateProducts(ICollection<string> errors)
@@ -75,10 +104,11 @@ namespace WarmBread.Editor
             var ids = new HashSet<string>(StringComparer.Ordinal);
             var guids = AssetDatabase.FindAssets("t:ProductData");
 
-            if (guids.Length == 0)
+            if (guids.Length < 10)
             {
-                errors.Add("Не найдено ни одного ProductData. Запустите подготовку проекта.");
-                return;
+                errors.Add(
+                    "В каталоге должно быть не меньше десяти базовых товаров. " +
+                    "Запустите подготовку проекта.");
             }
 
             foreach (var guid in guids)
@@ -114,6 +144,26 @@ namespace WarmBread.Editor
                 {
                     errors.Add("Некорректная закупочная цена или срок годности: " + path);
                 }
+
+                if (product.Price < product.Cost)
+                {
+                    errors.Add("Розничная цена ниже закупочной: " + path);
+                }
+            }
+
+            foreach (var required in new[]
+                     {
+                         "bread_white",
+                         "bread_black",
+                         "pirozhok_meat",
+                         "pirozhok_potato",
+                         "bulochka",
+                         "water",
+                         "lemonade",
+                         "gum"
+                     })
+            {
+                if (!ids.Contains(required)) errors.Add("Нет обязательного товара: " + required);
             }
         }
 
@@ -121,11 +171,14 @@ namespace WarmBread.Editor
         {
             var ids = new HashSet<string>(StringComparer.Ordinal);
             var guids = AssetDatabase.FindAssets("t:CustomerData");
+            var lateVisitors = 0;
+            var children = 0;
 
-            if (guids.Length == 0)
+            if (guids.Length < 6)
             {
-                errors.Add("Не найдено ни одного CustomerData. Запустите подготовку проекта.");
-                return;
+                errors.Add(
+                    "Нужно не меньше шести базовых покупателей. " +
+                    "Запустите подготовку проекта.");
             }
 
             foreach (var guid in guids)
@@ -153,6 +206,102 @@ namespace WarmBread.Editor
                 {
                     errors.Add("У покупателя не заполнены имя, приветствие или история: " + path);
                 }
+
+                if (customer.LateVisitor) lateVisitors++;
+                if (customer.Child) children++;
+            }
+
+            if (lateVisitors == 0) errors.Add("Нужен хотя бы один поздний посетитель.");
+            if (children == 0) errors.Add("Нужен хотя бы один ребёнок для проверки ограничений заказов.");
+        }
+
+        private static void ValidateCampaign(ICollection<string> errors)
+        {
+            if (CampaignRules.CampaignDays != 7)
+            {
+                errors.Add("Кампания должна состоять ровно из семи дней.");
+                return;
+            }
+
+            var titles = new HashSet<string>(StringComparer.Ordinal);
+            for (var day = 1; day <= CampaignRules.CampaignDays; day++)
+            {
+                var plan = CampaignRules.Get(day);
+                if (plan == null)
+                {
+                    errors.Add("Не найден план кампании для дня " + day + ".");
+                    continue;
+                }
+
+                if (plan.Day != day) errors.Add("План кампании имеет неправильный номер дня: " + day);
+                if (string.IsNullOrWhiteSpace(plan.Title) || !titles.Add(plan.Title))
+                {
+                    errors.Add("У дня кампании пустое или повторяющееся название: " + day);
+                }
+                if (string.IsNullOrWhiteSpace(plan.Description))
+                {
+                    errors.Add("У дня кампании нет описания: " + day);
+                }
+                if (plan.SalesGoal <= 0 || plan.RevenueGoal <= 0 || plan.Rent <= 0 || plan.GoalBonus <= 0)
+                {
+                    errors.Add("Некорректная экономика плана дня: " + day);
+                }
+            }
+
+            foreach (var ending in new[] { "home", "warm-light", "hard-autumn" })
+            {
+                if (string.IsNullOrWhiteSpace(CampaignRules.EndingTitle(ending)) ||
+                    string.IsNullOrWhiteSpace(CampaignRules.EndingText(ending)))
+                {
+                    errors.Add("Не заполнен финал кампании: " + ending);
+                }
+            }
+        }
+
+        private static void ValidateProceduralMeshes(ICollection<string> errors)
+        {
+            Mesh loaf = null;
+            Mesh bottle = null;
+            Mesh torus = null;
+
+            try
+            {
+                loaf = ProceduralMeshFactory.CreateLoaf("Validation loaf", .5f, .25f, .2f);
+                bottle = ProceduralMeshFactory.CreateLathe(
+                    "Validation bottle",
+                    new[]
+                    {
+                        new Vector2(.08f, 0f),
+                        new Vector2(.08f, .3f),
+                        new Vector2(.03f, .4f)
+                    },
+                    16);
+                torus = ProceduralMeshFactory.CreateTorus("Validation torus", .1f, .03f, 16, 8);
+
+                foreach (var mesh in new[] { loaf, bottle, torus })
+                {
+                    if (mesh == null || mesh.vertexCount < 16 || mesh.triangles.Length < 24)
+                    {
+                        errors.Add("Процедурный генератор создал пустую или повреждённую модель.");
+                        break;
+                    }
+
+                    if (mesh.bounds.size.sqrMagnitude <= .0001f)
+                    {
+                        errors.Add("У процедурной модели некорректные границы.");
+                        break;
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                errors.Add("Ошибка проверки процедурных моделей: " + exception.Message);
+            }
+            finally
+            {
+                if (loaf != null) UnityEngine.Object.DestroyImmediate(loaf);
+                if (bottle != null) UnityEngine.Object.DestroyImmediate(bottle);
+                if (torus != null) UnityEngine.Object.DestroyImmediate(torus);
             }
         }
 
@@ -166,7 +315,8 @@ namespace WarmBread.Editor
             {
                 foreach (var transform in root.GetComponentsInChildren<Transform>(true))
                 {
-                    missingScripts += GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(transform.gameObject);
+                    missingScripts += GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(
+                        transform.gameObject);
                 }
             }
 
