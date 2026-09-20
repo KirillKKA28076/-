@@ -18,8 +18,15 @@ namespace WarmBread
         private AudioClip bellClip;
         private Material rainMaterial;
         private GameObject rainObject;
+        private ParticleSystem rainParticles;
+        private WindZone windZone;
         private int station;
+        private int appliedDay = -1;
         private float teaCooldown;
+        private float weatherSunMultiplier = 1f;
+        private float targetFogDensity = .012f;
+        private Color daylightFog = new Color(.43f, .49f, .5f);
+        private Color nightFog = new Color(.14f, .19f, .23f);
 
         public string RadioName => station == 0
             ? "ТИХАЯ ВОЛНА"
@@ -28,6 +35,9 @@ namespace WarmBread
                 : "ВЫКЛЮЧЕНО";
 
         public float Volume { get; private set; } = .55f;
+        public string WeatherLabel => session != null && session.CurrentPlan != null
+            ? session.CurrentPlan.WeatherLabel
+            : "переменчивая погода";
 
         public void Initialize(GameSession game, Light daylight, Camera camera)
         {
@@ -47,6 +57,7 @@ namespace WarmBread
 
             ambience = gameObject.AddComponent<AudioSource>();
             ambience.loop = true;
+            ambience.spatialBlend = 0f;
             ambience.volume = .15f;
             ambienceClip = Noise();
             ambience.clip = ambienceClip;
@@ -54,17 +65,21 @@ namespace WarmBread
 
             radio = gameObject.AddComponent<AudioSource>();
             radio.loop = true;
+            radio.spatialBlend = 0f;
             radio.volume = .07f;
             radioClip = Melody(0);
             radio.clip = radioClip;
             radio.Play();
 
             effects = gameObject.AddComponent<AudioSource>();
+            effects.spatialBlend = 0f;
             effects.volume = .12f;
             bellClip = Bell();
 
             EventBus.Chime += Chime;
             Rain();
+            CreateWind();
+            ApplyWeather(true);
         }
 
         private void OnDestroy()
@@ -137,48 +152,146 @@ namespace WarmBread
         private void Update()
         {
             if (session == null) return;
+            if (appliedDay != session.Day) ApplyWeather(false);
 
             var daylight = Mathf.Sin(Mathf.InverseLerp(5f, 22f, session.Hour) * Mathf.PI);
             if (sun != null)
             {
-                sun.intensity = Mathf.Lerp(.08f, .75f, daylight);
+                sun.intensity = Mathf.Lerp(.065f, .75f * weatherSunMultiplier, daylight);
                 sun.transform.rotation = Quaternion.Euler(10f + daylight * 24f, -35f, 0f);
             }
 
-            RenderSettings.fogColor = Color.Lerp(
-                new Color(.14f, .19f, .23f),
-                new Color(.43f, .49f, .5f),
-                daylight);
+            var fogColor = Color.Lerp(nightFog, daylightFog, daylight);
+            RenderSettings.fogColor = fogColor;
+            RenderSettings.fogDensity = Mathf.Lerp(RenderSettings.fogDensity, targetFogDensity, Time.deltaTime * .35f);
+            if (viewCamera != null) viewCamera.backgroundColor = fogColor;
+        }
 
-            if (viewCamera != null) viewCamera.backgroundColor = RenderSettings.fogColor;
+        private void ApplyWeather(bool force)
+        {
+            if (session == null || session.CurrentPlan == null) return;
+            if (!force && appliedDay == session.Day) return;
+            appliedDay = session.Day;
+
+            var emissionRate = 0f;
+            var startSpeed = 8f;
+            var wind = .1f;
+            weatherSunMultiplier = 1f;
+            targetFogDensity = .01f;
+            daylightFog = new Color(.43f, .49f, .5f);
+            nightFog = new Color(.14f, .19f, .23f);
+
+            switch (session.CurrentPlan.Weather)
+            {
+                case WeatherKind.Rain:
+                    emissionRate = 1150f;
+                    startSpeed = 12f;
+                    wind = .7f;
+                    weatherSunMultiplier = .55f;
+                    targetFogDensity = .017f;
+                    daylightFog = new Color(.35f, .42f, .45f);
+                    if (ambience != null) ambience.volume = .22f;
+                    break;
+                case WeatherKind.Fog:
+                    emissionRate = 85f;
+                    startSpeed = 6f;
+                    wind = .08f;
+                    weatherSunMultiplier = .42f;
+                    targetFogDensity = .029f;
+                    daylightFog = new Color(.55f, .58f, .56f);
+                    nightFog = new Color(.24f, .27f, .26f);
+                    if (ambience != null) ambience.volume = .09f;
+                    break;
+                case WeatherKind.Clear:
+                    emissionRate = 0f;
+                    wind = .12f;
+                    weatherSunMultiplier = 1.18f;
+                    targetFogDensity = .0045f;
+                    daylightFog = new Color(.52f, .62f, .67f);
+                    if (ambience != null) ambience.volume = .065f;
+                    break;
+                case WeatherKind.Wind:
+                    emissionRate = 220f;
+                    startSpeed = 14f;
+                    wind = 1.25f;
+                    weatherSunMultiplier = .82f;
+                    targetFogDensity = .009f;
+                    daylightFog = new Color(.42f, .48f, .48f);
+                    if (ambience != null) ambience.volume = .14f;
+                    break;
+                default:
+                    emissionRate = 520f;
+                    startSpeed = 9f;
+                    wind = .35f;
+                    weatherSunMultiplier = .82f;
+                    targetFogDensity = .012f;
+                    if (ambience != null) ambience.volume = .15f;
+                    break;
+            }
+
+            if (rainParticles != null)
+            {
+                var main = rainParticles.main;
+                main.startSpeed = startSpeed;
+                main.startLifetime = Mathf.Lerp(1.45f, .9f, Mathf.InverseLerp(6f, 14f, startSpeed));
+                main.startColor = session.CurrentPlan.Weather == WeatherKind.Fog
+                    ? new Color(.72f, .76f, .73f, .13f)
+                    : new Color(.6f, .72f, .75f, .34f);
+
+                var emission = rainParticles.emission;
+                emission.rateOverTime = emissionRate;
+                if (emissionRate > 0f && !rainParticles.isPlaying) rainParticles.Play();
+                if (emissionRate <= 0f && rainParticles.isPlaying) rainParticles.Stop();
+            }
+
+            if (windZone != null)
+            {
+                windZone.windMain = wind;
+                windZone.windTurbulence = wind * .35f;
+                windZone.windPulseMagnitude = wind * .25f;
+                windZone.windPulseFrequency = .22f;
+            }
+
+            RenderSettings.fog = targetFogDensity > 0f;
+            EventBus.Refresh();
+        }
+
+        private void CreateWind()
+        {
+            var windObject = new GameObject("Ветер между домами");
+            windObject.transform.SetParent(transform, false);
+            windObject.transform.rotation = Quaternion.Euler(0f, 35f, 0f);
+            windZone = windObject.AddComponent<WindZone>();
+            windZone.mode = WindZoneMode.Directional;
+            windZone.radius = 50f;
         }
 
         private void Rain()
         {
-            rainObject = new GameObject("Дождь за окном");
-            rainObject.transform.SetParent(transform);
+            rainObject = new GameObject("Осадки за окном");
+            rainObject.transform.SetParent(transform, false);
             rainObject.transform.position = new Vector3(0f, 9f, 9f);
 
-            var particles = rainObject.AddComponent<ParticleSystem>();
-            particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            rainParticles = rainObject.AddComponent<ParticleSystem>();
+            rainParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
 
-            var main = particles.main;
+            var main = rainParticles.main;
             main.startLifetime = 1.1f;
             main.startSpeed = 9f;
             main.startSize = .012f;
-            main.maxParticles = 1600;
+            main.maxParticles = 2200;
             main.simulationSpace = ParticleSystemSimulationSpace.World;
             main.startColor = new Color(.6f, .72f, .75f, .32f);
 
-            var shape = particles.shape;
+            var shape = rainParticles.shape;
             shape.shapeType = ParticleSystemShapeType.Box;
-            shape.scale = new Vector3(36f, 12f, .1f);
+            shape.scale = new Vector3(42f, 14f, .1f);
 
             rainObject.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-            var emission = particles.emission;
-            emission.rateOverTime = 750f;
+            var emission = rainParticles.emission;
+            emission.rateOverTime = 520f;
 
-            var renderer = particles.GetComponent<ParticleSystemRenderer>();
+            var renderer = rainParticles.GetComponent<ParticleSystemRenderer>();
             renderer.renderMode = ParticleSystemRenderMode.Stretch;
             renderer.lengthScale = 6f;
 
@@ -204,10 +317,9 @@ namespace WarmBread
                 renderer.sharedMaterial = rainMaterial;
             }
 
-            particles.Play();
+            rainParticles.Play();
         }
 
-        // Все звуки синтезированы для проекта. Записей реальных радиостанций нет.
         private static AudioClip Noise()
         {
             const int rate = 22050;
@@ -215,10 +327,10 @@ namespace WarmBread
             var random = new System.Random(421);
             var previous = 0f;
 
-            for (var i = 0; i < data.Length; i++)
+            for (var index = 0; index < data.Length; index++)
             {
                 previous = Mathf.Lerp(previous, (float)random.NextDouble() * 2f - 1f, .17f);
-                data[i] = previous * .36f;
+                data[index] = previous * .36f;
             }
 
             var clip = AudioClip.Create("Дождь • синтез", data.Length, 1, rate, false);
@@ -236,14 +348,14 @@ namespace WarmBread
                 : new[] { 52, 55, 59, 62, 59, 55, 50, 55, 48, 52, 55, 60, 55, 52, 47, 50 };
 
             var data = new float[(int)(rate * beat * notes.Length)];
-            for (var i = 0; i < data.Length; i++)
+            for (var index = 0; index < data.Length; index++)
             {
-                var time = i / (float)rate;
-                var index = (int)(time / beat) % notes.Length;
+                var time = index / (float)rate;
+                var note = (int)(time / beat) % notes.Length;
                 var local = time % beat;
-                var frequency = 440f * Mathf.Pow(2f, (notes[index] - 69) / 12f);
+                var frequency = 440f * Mathf.Pow(2f, (notes[note] - 69) / 12f);
                 var envelope = Mathf.Min(local * 35f, 1f) * Mathf.Exp(-local * 5f);
-                data[i] =
+                data[index] =
                     (Mathf.Sin(2f * Mathf.PI * frequency * time) +
                      .18f * Mathf.Sin(2f * Mathf.PI * frequency * 2f * time)) *
                     envelope *
@@ -265,10 +377,10 @@ namespace WarmBread
             const int rate = 22050;
             var data = new float[rate / 4];
 
-            for (var i = 0; i < data.Length; i++)
+            for (var index = 0; index < data.Length; index++)
             {
-                var time = i / (float)rate;
-                data[i] =
+                var time = index / (float)rate;
+                data[index] =
                     Mathf.Sin(time * 2f * Mathf.PI * 1100f) *
                     Mathf.Exp(-time * 24f) *
                     .4f;
