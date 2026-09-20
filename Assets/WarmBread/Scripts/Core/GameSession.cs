@@ -55,7 +55,7 @@ namespace WarmBread
         public float AbsoluteHour => (Day - 1) * 24f + Hour;
         public int ChangeInHand { get; private set; }
         public int PendingDeliveries => deliveries.Count;
-        public bool IsCampaignFinale => Report && Day >= CampaignRules.CampaignDays;
+        public bool IsCampaignFinale => Report && Day == CampaignRules.CampaignDays;
 
         [Min(60f)]
         public float DayDurationSeconds = 900f;
@@ -199,12 +199,12 @@ namespace WarmBread
 
             Hour += Time.deltaTime * 14f / Mathf.Max(60f, DayDurationSeconds);
 
-            for (var i = deliveries.Count - 1; i >= 0; i--)
+            for (var index = deliveries.Count - 1; index >= 0; index--)
             {
-                if (Time.time < deliveries[i].Due) continue;
+                if (Time.time < deliveries[index].Due) continue;
 
-                Stock.Add(deliveries[i].Id, 10, AbsoluteHour);
-                deliveries.RemoveAt(i);
+                Stock.Add(deliveries[index].Id, 10, AbsoluteHour);
+                deliveries.RemoveAt(index);
                 EventBus.Say("Поставщик оставил ящик свежего товара. Уже на полке.");
                 EventBus.Sound(.8f);
                 EventBus.Refresh();
@@ -474,7 +474,8 @@ namespace WarmBread
             Modal = true;
             Hour = 20f;
 
-            if (!CampaignCompleted && Day >= CampaignRules.CampaignDays)
+            var closingCampaign = Day == CampaignRules.CampaignDays;
+            if (!CampaignCompleted && closingCampaign)
             {
                 CampaignCompleted = true;
                 EndingId = CampaignRules.EndingId(Reputation, Cash, TotalSales);
@@ -482,7 +483,7 @@ namespace WarmBread
 
             SaveCheckpoint(Day + 1);
 
-            if (CampaignCompleted && Day >= CampaignRules.CampaignDays)
+            if (closingCampaign)
             {
                 EventBus.Say(CampaignRules.EndingTitle(EndingId));
             }
