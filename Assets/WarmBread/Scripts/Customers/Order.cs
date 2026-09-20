@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 
 namespace WarmBread
@@ -6,8 +7,14 @@ namespace WarmBread
     public sealed class Order
     {
         private readonly Dictionary<string, int> items = new Dictionary<string, int>();
+        private readonly IReadOnlyDictionary<string, int> readOnlyItems;
 
-        public IReadOnlyDictionary<string, int> Items => items;
+        public Order()
+        {
+            readOnlyItems = new ReadOnlyDictionary<string, int>(items);
+        }
+
+        public IReadOnlyDictionary<string, int> Items => readOnlyItems;
         public int Total { get; private set; }
         public int Paid => Money.Tender(Total);
 

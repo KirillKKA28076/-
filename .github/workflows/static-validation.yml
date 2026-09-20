@@ -1,0 +1,33 @@
+name: Static validation
+
+on:
+  push:
+    branches:
+      - main
+      - "repair/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install validator dependencies
+        run: python -m pip install --disable-pip-version-check tree-sitter tree-sitter-c-sharp fonttools
+
+      - name: Validate repository
+        run: python Tools/validate_project.py
