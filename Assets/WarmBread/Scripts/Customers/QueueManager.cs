@@ -21,34 +21,41 @@ namespace WarmBread
         private float conflictTimer;
         private float conflictCooldown;
         private System.Random rng;
+        private int seededDay;
 
         public void Initialize(GameSession session)
         {
             Session = session;
-            rng = new System.Random(2002);
+            Reseed();
         }
 
         private void Update()
         {
             if (Session == null || !Session.Running || Session.Paused) return;
+            if (seededDay != Session.Day) Reseed();
 
             spawnTimer -= Time.deltaTime;
             if (spawnTimer <= 0f)
             {
-                spawnTimer = (Session.Hour > 8f && Session.Hour < 10f) ||
-                             (Session.Hour > 17f && Session.Hour < 19f)
-                    ? 21f
-                    : 32f;
+                var rushHour = (Session.Hour > 8f && Session.Hour < 10f) ||
+                               (Session.Hour > 17f && Session.Hour < 19f);
+                var baseInterval = rushHour ? 21f : 32f;
+                var multiplier = Session.CurrentPlan != null
+                    ? Session.CurrentPlan.CustomerIntervalMultiplier
+                    : 1f;
+                spawnTimer = Mathf.Max(7f, baseInterval * multiplier * RandomRange(.88f, 1.12f));
 
-                if (customers.Count < 6 && Session.Hour < 19.8f) Spawn();
+                var maxQueue = Mathf.Clamp(6 + (Session.Day - 1) / 3, 6, 9);
+                if (customers.Count < maxQueue && Session.Hour < 19.8f) Spawn();
             }
 
             conflictCooldown = Mathf.Max(0f, conflictCooldown - Time.deltaTime);
+            var conflictThreshold = Mathf.Max(28f, 48f - Session.Day * 2f);
             if (!Conflict &&
                 conflictCooldown <= 0f &&
                 customers.Count >= 3 &&
                 customers[1] != null &&
-                customers[1].WaitSeconds > 45f)
+                customers[1].WaitSeconds > conflictThreshold)
             {
                 Conflict = true;
                 conflictTimer = 25f;
@@ -82,7 +89,8 @@ namespace WarmBread
             var latePeople = allPeople.Where(person => person.LateVisitor).ToArray();
 
             CustomerData data;
-            if (Session.Hour > 19f && latePeople.Length > 0 && rng.NextDouble() < .2)
+            var lateChance = Session.Day >= CampaignRules.CampaignDays ? .34 : .2;
+            if (Session.Hour > 19f && latePeople.Length > 0 && rng.NextDouble() < lateChance)
             {
                 data = latePeople[rng.Next(latePeople.Length)];
             }
@@ -102,7 +110,8 @@ namespace WarmBread
             if (available.Length == 0) return;
 
             var order = new Order();
-            var itemCount = rng.Next(1, 4);
+            var maximumItems = Session.Day >= 6 ? 4 : 3;
+            var itemCount = rng.Next(1, maximumItems + 1);
             for (var i = 0; i < itemCount; i++)
             {
                 var eligible = available
@@ -112,7 +121,8 @@ namespace WarmBread
                     .ToArray();
 
                 if (eligible.Length == 0) break;
-                order.Add(eligible[rng.Next(eligible.Length)]);
+                var selected = PickWeighted(eligible, Session.CurrentPlan);
+                if (selected != null) order.Add(selected);
             }
 
             if (order.Items.Count == 0) return;
@@ -126,6 +136,27 @@ namespace WarmBread
             customers.Add(person);
             Reposition();
             EventBus.Refresh();
+        }
+
+        private ProductData PickWeighted(ProductData[] products, DayPlan plan)
+        {
+            if (products == null || products.Length == 0) return null;
+            if (plan == null) return products[rng.Next(products.Length)];
+
+            var total = 0f;
+            for (var i = 0; i < products.Length; i++)
+            {
+                total += Mathf.Max(.01f, plan.DemandWeight(products[i]));
+            }
+
+            var roll = (float)rng.NextDouble() * total;
+            for (var i = 0; i < products.Length; i++)
+            {
+                roll -= Mathf.Max(.01f, plan.DemandWeight(products[i]));
+                if (roll <= 0f) return products[i];
+            }
+
+            return products[products.Length - 1];
         }
 
         public void Calm()
@@ -176,7 +207,19 @@ namespace WarmBread
             conflictTimer = 0f;
             conflictCooldown = 45f;
             Conflict = false;
+            Reseed();
             EventBus.Refresh();
+        }
+
+        private void Reseed()
+        {
+            seededDay = Session != null ? Session.Day : 1;
+            rng = new System.Random(2002 + seededDay * 7919);
+        }
+
+        private float RandomRange(float minimum, float maximum)
+        {
+            return minimum + (maximum - minimum) * (float)rng.NextDouble();
         }
     }
 }
