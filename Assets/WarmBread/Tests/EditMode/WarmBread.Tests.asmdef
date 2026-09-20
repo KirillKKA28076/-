@@ -1,0 +1,7 @@
+{
+  "name": "WarmBread.Tests",
+  "rootNamespace": "WarmBread.Tests",
+  "references": ["WarmBread.Runtime"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "includePlatforms": ["Editor"]
+}

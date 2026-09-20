@@ -1,0 +1,20 @@
+fileFormatVersion: 2
+guid: 5cb0259dd0dc50226661c573ab0d31b0
+TrueTypeFontImporter:
+  externalObjects: {}
+  serializedVersion: 4
+  fontSize: 16
+  fontColor: {r: 1, g: 1, b: 1, a: 1}
+  fontName: DejaVu Sans
+  includeFontData: 1
+  fontNames:
+  - DejaVu Sans
+  fallbackFontReferences: []
+  characterSpacing: 0
+  characterPadding: 1
+  fontRenderingMode: 0
+  ascentCalculationMode: 1
+  useLegacyBoundsCalculation: 0
+  userData:
+  assetBundleName:
+  assetBundleVariant:
