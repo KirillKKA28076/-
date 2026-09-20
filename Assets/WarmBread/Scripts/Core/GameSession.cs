@@ -37,6 +37,15 @@ namespace WarmBread
         public int Expenses { get; private set; }
         public int Complaints { get; private set; }
         public int Waste { get; private set; }
+        public int TotalSales { get; private set; }
+        public int TotalRevenue { get; private set; }
+        public int GoalsCompleted { get; private set; }
+        public int GoalBonusAwarded { get; private set; }
+        public bool GoalAchievedToday { get; private set; }
+        public bool CampaignCompleted { get; private set; }
+        public string EndingId { get; private set; } = string.Empty;
+        public DayPlan CurrentPlan { get; private set; } = CampaignRules.Get(1);
+
         public bool Running { get; private set; }
         public bool Report { get; private set; }
         public bool Paying { get; private set; }
@@ -46,6 +55,7 @@ namespace WarmBread
         public float AbsoluteHour => (Day - 1) * 24f + Hour;
         public int ChangeInHand { get; private set; }
         public int PendingDeliveries => deliveries.Count;
+        public bool IsCampaignFinale => Report && Day >= CampaignRules.CampaignDays;
 
         [Min(60f)]
         public float DayDurationSeconds = 900f;
@@ -71,14 +81,8 @@ namespace WarmBread
             var catalogIds = new HashSet<string>(catalog.Select(product => product.Id), StringComparer.Ordinal);
             foreach (var fallback in ProductCatalog.CreateDefaults())
             {
-                if (catalogIds.Add(fallback.Id))
-                {
-                    catalog.Add(fallback);
-                }
-                else
-                {
-                    Destroy(fallback);
-                }
+                if (catalogIds.Add(fallback.Id)) catalog.Add(fallback);
+                else Destroy(fallback);
             }
 
             Products = catalog
@@ -88,6 +92,8 @@ namespace WarmBread
 
             People = Resources.LoadAll<CustomerData>("Customers")
                 .Where(person => person != null)
+                .GroupBy(person => person.Id, StringComparer.Ordinal)
+                .Select(group => group.First())
                 .ToArray();
 
             if (People.Length == 0) People = CustomerData.Defaults();
@@ -106,6 +112,11 @@ namespace WarmBread
             Day = saved != null ? saved.day : 1;
             Cash = saved != null ? saved.cash : 50000;
             Reputation = saved != null ? saved.reputation : 70;
+            TotalSales = saved != null ? saved.totalSales : 0;
+            TotalRevenue = saved != null ? saved.totalRevenue : 0;
+            GoalsCompleted = saved != null ? saved.goalsCompleted : 0;
+            CampaignCompleted = saved != null && saved.campaignCompleted;
+            EndingId = saved != null ? saved.endingId ?? string.Empty : string.Empty;
             Hour = 6f;
 
             Stock = new Inventory();
@@ -131,7 +142,6 @@ namespace WarmBread
                         var person = People.FirstOrDefault(candidate =>
                             candidate != null &&
                             string.Equals(candidate.Story, story, StringComparison.Ordinal));
-
                         journalIds.Add(person != null ? person.Id : "legacy:" + story);
                     }
                 }
@@ -147,19 +157,27 @@ namespace WarmBread
             ResetShift();
             SaveCheckpoint();
 
-            EventBus.Say(resume && saved == null
-                ? "Сохранение не прочитано. Начинаем новую историю."
-                : "Сентябрь, 2002. Чайник греется. Район просыпается.");
+            if (resume && saved == null)
+            {
+                EventBus.Say("Сохранение не прочитано. Начинаем новую историю.");
+            }
+            else
+            {
+                EventBus.Say(CurrentPlan.Title + ". " + CurrentPlan.Description);
+            }
         }
 
         private void ResetShift()
         {
+            CurrentPlan = CampaignRules.Get(Day);
             Hour = 6f;
             Sales = 0;
             Revenue = 0;
             Expenses = 0;
             Complaints = 0;
             Waste = 0;
+            GoalBonusAwarded = 0;
+            GoalAchievedToday = false;
             Paying = false;
             Paused = false;
             Modal = false;
@@ -228,7 +246,7 @@ namespace WarmBread
         {
             if (!Running || Paying || product == null) return;
 
-            if (Bag.Count >= 10)
+            if (Bag.Sum(item => item != null ? item.quantity : 0) >= 10)
             {
                 EventBus.Say("Пакет полон. X — вернуть всё на полку.");
                 return;
@@ -326,7 +344,9 @@ namespace WarmBread
 
             Cash += customer.Order.Total;
             Revenue += customer.Order.Total;
+            TotalRevenue += customer.Order.Total;
             Sales++;
+            TotalSales++;
             ChangeReputation(1);
 
             Bag.Clear();
@@ -388,9 +408,14 @@ namespace WarmBread
 
             Cash -= cost;
             Expenses += cost;
-            deliveries.Add(new Delivery { Id = product.Id, Due = Time.time + 25f });
+            deliveries.Add(new Delivery
+            {
+                Id = product.Id,
+                Due = Time.time + (CurrentPlan != null ? CurrentPlan.DeliverySeconds : 25f)
+            });
 
-            EventBus.Say("Заказано: " + product.Title + " × 10. Привезут через 25 секунд.");
+            var seconds = CurrentPlan != null ? Mathf.RoundToInt(CurrentPlan.DeliverySeconds) : 25;
+            EventBus.Say("Заказано: " + product.Title + " × 10. Привезут примерно через " + seconds + " секунд.");
             EventBus.Refresh();
         }
 
@@ -398,6 +423,21 @@ namespace WarmBread
         {
             Reputation = Mathf.Clamp(Reputation + amount, 0, 100);
             EventBus.Refresh();
+        }
+
+        public bool IsDailyGoalReached()
+        {
+            return CurrentPlan != null &&
+                   Sales >= CurrentPlan.SalesGoal &&
+                   Revenue >= CurrentPlan.RevenueGoal;
+        }
+
+        public string GoalProgressText()
+        {
+            if (CurrentPlan == null) return string.Empty;
+            return "Цель: " + Mathf.Min(Sales, CurrentPlan.SalesGoal) + "/" + CurrentPlan.SalesGoal +
+                   " покупателей, " + Money.Format(Mathf.Min(Revenue, CurrentPlan.RevenueGoal)) +
+                   "/" + Money.Format(CurrentPlan.RevenueGoal);
         }
 
         public void CloseDay()
@@ -414,16 +454,47 @@ namespace WarmBread
             }
 
             deliveries.Clear();
-            Cash -= 5000;
-            Expenses += 5000;
+            GoalAchievedToday = IsDailyGoalReached();
+            GoalBonusAwarded = 0;
+
+            if (GoalAchievedToday && CurrentPlan != null)
+            {
+                GoalBonusAwarded = CurrentPlan.GoalBonus;
+                Cash += GoalBonusAwarded;
+                GoalsCompleted++;
+                Reputation = Mathf.Clamp(Reputation + 3, 0, 100);
+            }
+
+            var rent = CurrentPlan != null ? CurrentPlan.Rent : 5000;
+            Cash -= rent;
+            Expenses += rent;
+
             Running = false;
             Report = true;
             Modal = true;
             Hour = 20f;
 
-            // Сохраняем уже следующий день: при аварийном выходе итог смены не теряется
-            // и повторная аренда за закрытый день не списывается.
+            if (!CampaignCompleted && Day >= CampaignRules.CampaignDays)
+            {
+                CampaignCompleted = true;
+                EndingId = CampaignRules.EndingId(Reputation, Cash, TotalSales);
+            }
+
             SaveCheckpoint(Day + 1);
+
+            if (CampaignCompleted && Day >= CampaignRules.CampaignDays)
+            {
+                EventBus.Say(CampaignRules.EndingTitle(EndingId));
+            }
+            else if (GoalAchievedToday)
+            {
+                EventBus.Say("План дня выполнен. Район отвечает доверием, а касса — премией.");
+            }
+            else
+            {
+                EventBus.Say("Смена закончена. Завтра можно попробовать иначе.");
+            }
+
             EventBus.Refresh();
         }
 
@@ -434,7 +505,7 @@ namespace WarmBread
             Day++;
             ResetShift();
             SaveCheckpoint();
-            EventBus.Say("Новая смена. Пусть сегодня будет немного теплее.");
+            EventBus.Say(CurrentPlan.Title + ". " + CurrentPlan.Description);
         }
 
         private void SaveCheckpoint(int? dayOverride = null)
@@ -444,6 +515,11 @@ namespace WarmBread
                 day = dayOverride ?? Day,
                 cash = Cash,
                 reputation = Reputation,
+                totalSales = TotalSales,
+                totalRevenue = TotalRevenue,
+                goalsCompleted = GoalsCompleted,
+                campaignCompleted = CampaignCompleted,
+                endingId = EndingId ?? string.Empty,
                 stock = Stock.Batches
                     .Select(batch => new StockBatch(batch.productId, batch.quantity, batch.bakedAt))
                     .ToList(),
