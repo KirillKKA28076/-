@@ -25,9 +25,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: Tools/requirements-validator.txt
 
       - name: Install validator dependencies
-        run: python -m pip install --disable-pip-version-check tree-sitter tree-sitter-c-sharp fonttools
+        run: python -m pip install --disable-pip-version-check -r Tools/requirements-validator.txt
 
       - name: Validate repository
         run: python Tools/validate_project.py
