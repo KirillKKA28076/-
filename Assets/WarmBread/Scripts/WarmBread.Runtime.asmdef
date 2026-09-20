@@ -1,0 +1,5 @@
+{
+  "name": "WarmBread.Runtime",
+  "rootNamespace": "WarmBread",
+  "references": ["Unity.InputSystem", "Unity.TextMeshPro", "Unity.ugui", "Unity.AI.Navigation", "Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.Runtime"]
+}

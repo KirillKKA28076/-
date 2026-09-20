@@ -1,0 +1,14 @@
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uilds/
+[Ll]ogs/
+UserSettings/
+.vs/
+.idea/
+*.csproj
+*.sln
+*.user
+*.log
+.DS_Store
+Assets/Generated/
