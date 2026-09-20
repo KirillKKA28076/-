@@ -1,0 +1,6 @@
+{
+  "name": "WarmBread.Editor",
+  "rootNamespace": "WarmBread.Editor",
+  "references": ["WarmBread.Runtime", "Unity.TextMeshPro", "Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.Runtime"],
+  "includePlatforms": ["Editor"]
+}

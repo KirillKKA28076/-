@@ -138,9 +138,8 @@ namespace WarmBread
                 if(tab==1)Button(sheet,"Ящик ×10 · "+Money.Format(p.Cost*10),815,y-3,278,34,()=>game.BuyStock(p),true);
                 else Button(sheet,"В пакет",815,y-3,278,34,()=>game.AddToBag(p),true);
             }
-            Text(sheet,tab==1?"Доставка: 25 секунд. В пути: "+game.PendingDeliveries+". "+lastMessage:"Соберите точный заказ. Лишнее можно вернуть клавишей X. Время идёт, пока открыт блокнот.",40,644,1040, sixty(),16,muted);
+            Text(sheet,tab==1?"Доставка: 25 секунд. В пути: "+game.PendingDeliveries+". "+lastMessage:"Соберите точный заказ. Лишнее можно вернуть клавишей X. Время идёт, пока открыт блокнот.",40,644,1040,60,16,muted);
         }
-        private static float sixty()=>60;
         private void Pause()
         {
             var sheet=Sheet("Тихая пауза","МОЖНО ПЕРЕВЕСТИ ДУХ");
