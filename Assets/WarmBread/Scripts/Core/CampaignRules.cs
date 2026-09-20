@@ -59,9 +59,12 @@ namespace WarmBread
         public float DemandWeight(ProductData product)
         {
             if (product == null || string.IsNullOrWhiteSpace(product.Id)) return 0f;
-            for (var i = 0; i < focusProducts.Length; i++)
+            for (var index = 0; index < focusProducts.Length; index++)
             {
-                if (string.Equals(focusProducts[i], product.Id, StringComparison.Ordinal)) return 2.35f;
+                if (string.Equals(focusProducts[index], product.Id, StringComparison.Ordinal))
+                {
+                    return 2.35f;
+                }
             }
 
             if (product.Id.StartsWith("bread_", StringComparison.Ordinal)) return 1.2f;
@@ -91,33 +94,33 @@ namespace WarmBread
                 "bread_black"),
             new DayPlan(
                 2,
-                "После школы",
-                "К обеду у остановки станет шумнее. Дети чаще берут лимонад, булочки и жвачку.",
+                "Холодный дождь",
+                "Дождь усилился. Горячие пирожки разбирают быстрее, а мокрая очередь ждёт меньше.",
                 7,
                 11000,
                 5000,
                 2000,
                 .9f,
                 24f,
-                WeatherKind.Clear,
-                "светло после дождя",
-                "gum",
-                "lemonade",
-                "bulochka"),
+                WeatherKind.Rain,
+                "сильный дождь",
+                "pirozhok_meat",
+                "pirozhok_potato"),
             new DayPlan(
                 3,
-                "Холодный фронт",
-                "Дождь усилился. Горячие пирожки разбирают быстрее обычного.",
+                "После школы",
+                "К обеду у остановки станет шумнее. Дети чаще берут лимонад, булочки и жвачку.",
                 8,
                 14000,
                 5000,
                 2500,
                 .88f,
                 23f,
-                WeatherKind.Rain,
-                "сильный дождь",
-                "pirozhok_meat",
-                "pirozhok_potato"),
+                WeatherKind.Clear,
+                "светло после дождя",
+                "gum",
+                "lemonade",
+                "bulochka"),
             new DayPlan(
                 4,
                 "День получки",
@@ -128,8 +131,8 @@ namespace WarmBread
                 3000,
                 .72f,
                 20f,
-                WeatherKind.Wind,
-                "ветрено",
+                WeatherKind.Clear,
+                "холодное ясное утро",
                 "bread_white",
                 "sig_camel",
                 "sig_java"),
@@ -137,8 +140,8 @@ namespace WarmBread
                 5,
                 "Туманное утро",
                 "Город звучит тише. Постоянные покупатели ждут знакомого света в окошке.",
-                9,
-                17500,
+                10,
+                20000,
                 5500,
                 3500,
                 .82f,
@@ -149,22 +152,22 @@ namespace WarmBread
                 "water"),
             new DayPlan(
                 6,
-                "Субботний двор",
-                "Люди не спешат на работу и чаще берут что-нибудь к чаю.",
+                "Ветер с рынка",
+                "Порывы гонят листья вдоль остановки. Поток быстрый, спрос меняется, поставщик приезжает раньше.",
                 12,
                 23000,
                 6000,
                 4500,
                 .65f,
                 18f,
-                WeatherKind.Clear,
-                "редкое солнце",
+                WeatherKind.Wind,
+                "сильный ветер",
                 "bulochka",
                 "pirozhok_potato",
                 "lemonade"),
             new DayPlan(
                 7,
-                "Последний день недели",
+                "Воскресенье двора",
                 "За семь дней ларёк стал частью двора. Сегодня решится, каким его запомнят.",
                 12,
                 26000,
@@ -185,17 +188,18 @@ namespace WarmBread
             if (day <= Plans.Length) return Plans[day - 1];
 
             var extra = day - CampaignDays;
+            var weatherKinds = Enum.GetValues(typeof(WeatherKind)).Length;
             return new DayPlan(
                 day,
                 "Обычный день во дворе",
-                "История завершена, но ларёк продолжает жить в бесконечном режиме.",
-                Mathf.Min(20, 10 + extra / 2),
-                Mathf.Min(50000, 22000 + extra * 1200),
+                "История завершена, но ларёк продолжает жить в свободном режиме.",
+                Mathf.Min(20, 12 + extra / 2),
+                Mathf.Min(50000, 24000 + extra * 1200),
                 6000,
                 Mathf.Min(8000, 3500 + extra * 250),
-                Mathf.Max(.55f, .8f - extra * .015f),
-                Mathf.Max(14f, 22f - extra * .25f),
-                (WeatherKind)(extra % Enum.GetValues(typeof(WeatherKind)).Length),
+                Mathf.Max(.55f, .78f - extra * .015f),
+                Mathf.Max(14f, 21f - extra * .25f),
+                (WeatherKind)(extra % weatherKinds),
                 "переменчивая погода",
                 extra % 2 == 0 ? "bread_white" : "bread_black");
         }
