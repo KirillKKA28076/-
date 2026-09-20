@@ -18,7 +18,7 @@ namespace WarmBread
     {
         public static CustomerVisualRig BuildCustomer(Transform parent, CustomerData data)
         {
-            var id = data != null ? data.Id : "customer";
+            var id = data != null && !string.IsNullOrWhiteSpace(data.Id) ? data.Id : "customer";
             var seed = StableHash(id);
             var random = new System.Random(seed);
             var displayName = data != null ? data.DisplayName : "Покупатель";
@@ -28,37 +28,40 @@ namespace WarmBread
                 new Color(.84f, .67f, .52f),
                 .3f + (float)random.NextDouble() * .55f);
             var hairColor = Color.Lerp(
-                new Color(.06f, .045f, .035f),
-                new Color(.35f, .23f, .12f),
+                new Color(.055f, .04f, .03f),
+                new Color(.36f, .23f, .12f),
                 (float)random.NextDouble());
-            var trousersColor = Color.Lerp(new Color(.08f, .095f, .11f), new Color(.2f, .23f, .25f), (float)random.NextDouble());
-            var shoeColor = new Color(.045f, .05f, .055f);
-            var scarfColor = Color.HSVToRGB((float)random.NextDouble(), .45f, .58f);
+            var trousersColor = Color.Lerp(
+                new Color(.075f, .09f, .105f),
+                new Color(.21f, .23f, .25f),
+                (float)random.NextDouble());
+            var scarfColor = Color.HSVToRGB((float)random.NextDouble(), .44f, .58f);
 
             var coat = WorldArt.Material("Пальто " + id, coatColor, .22f, true);
-            var coatDark = WorldArt.Material("Тени пальто " + id, Color.Lerp(coatColor, Color.black, .28f), .16f, true);
+            var coatDark = WorldArt.Material(
+                "Тени пальто " + id,
+                Color.Lerp(coatColor, Color.black, .28f),
+                .16f,
+                true);
             var skin = WorldArt.Material("Кожа " + id, skinTone, .28f);
             var hair = WorldArt.Material("Волосы " + id, hairColor, .12f, true);
             var trousers = WorldArt.Material("Брюки " + id, trousersColor, .16f, true);
-            var shoes = WorldArt.Material("Обувь " + id, shoeColor, .3f, true);
+            var shoes = WorldArt.Material("Обувь " + id, new Color(.04f, .045f, .05f), .3f, true);
             var scarf = WorldArt.Material("Шарф " + id, scarfColor, .18f, true);
             var eyeWhite = WorldArt.Material("Белки глаз", new Color(.82f, .79f, .7f), .25f);
             var eyeDark = WorldArt.Material("Глаза " + id, new Color(.04f, .055f, .05f), .28f);
 
             var visual = new GameObject("Модель • " + displayName).transform;
             visual.SetParent(parent, false);
-
             var rig = new CustomerVisualRig { Root = visual };
 
-            var torso = WorldArt.ChamferedBox(
+            WorldArt.ChamferedBox(
                 "Пальто",
                 visual,
                 new Vector3(0f, 1.08f, 0f),
                 new Vector3(.52f, .76f, .32f),
                 .08f,
                 coat);
-            torso.transform.localScale = new Vector3(1f, 1f, .95f);
-
             WorldArt.ChamferedBox(
                 "Нижняя пола пальто",
                 visual,
@@ -66,7 +69,6 @@ namespace WarmBread
                 new Vector3(.58f, .36f, .35f),
                 .07f,
                 coatDark);
-
             WorldArt.ChamferedBox(
                 "Планка пальто",
                 visual,
@@ -101,14 +103,13 @@ namespace WarmBread
                 .02f,
                 scarf);
 
-            var neck = WorldArt.Shape(
+            WorldArt.Shape(
                 PrimitiveType.Cylinder,
                 "Шея",
                 new Vector3(0f, 1.5f, 0f),
                 new Vector3(.095f, .11f, .095f),
                 skin,
                 visual);
-            neck.transform.localRotation = Quaternion.identity;
 
             var headRoot = new GameObject("Голова pivot").transform;
             headRoot.SetParent(visual, false);
@@ -169,10 +170,38 @@ namespace WarmBread
                 new Vector3(0f, -.08f, -.163f),
                 new Vector3(.075f, .012f, .01f),
                 .005f,
-                WorldArt.Material("Губы " + id, Color.Lerp(skinTone, new Color(.45f, .12f, .12f), .35f), .2f));
+                WorldArt.Material(
+                    "Губы " + id,
+                    Color.Lerp(skinTone, new Color(.45f, .12f, .12f), .35f),
+                    .2f));
 
-            var headwear = Math.Abs(seed) % 4;
-            if (headwear == 0)
+            BuildHairOrHat(headRoot, Math.Abs(seed) % 4, hair, scarf, coatDark);
+            rig.LeftArm = BuildArm(visual, -1, coat, skin);
+            rig.RightArm = BuildArm(visual, 1, coat, skin);
+            rig.LeftLeg = BuildLeg(visual, -1, trousers, shoes);
+            rig.RightLeg = BuildLeg(visual, 1, trousers, shoes);
+
+            if (Math.Abs(seed) % 3 == 0)
+            {
+                rig.Accessory = BuildBag(visual, id, coatColor, coatDark);
+            }
+            else if (Math.Abs(seed) % 5 == 0)
+            {
+                rig.Accessory = BuildUmbrella(rig.RightArm, scarf);
+            }
+
+            if (data != null && data.Child) visual.localScale = Vector3.one * .8f;
+            return rig;
+        }
+
+        private static void BuildHairOrHat(
+            Transform headRoot,
+            int style,
+            Material hair,
+            Material scarf,
+            Material coatDark)
+        {
+            if (style == 0)
             {
                 WorldArt.Shape(
                     PrimitiveType.Sphere,
@@ -188,28 +217,10 @@ namespace WarmBread
                     Vector3.one * .085f,
                     scarf,
                     headRoot);
+                return;
             }
-            else if (headwear == 1)
-            {
-                WorldArt.Shape(
-                    PrimitiveType.Sphere,
-                    "Волосы",
-                    new Vector3(0f, .145f, .02f),
-                    new Vector3(.33f, .18f, .3f),
-                    hair,
-                    headRoot);
-                for (var i = -2; i <= 2; i++)
-                {
-                    WorldArt.Shape(
-                        PrimitiveType.Capsule,
-                        "Прядь",
-                        new Vector3(i * .055f, .02f + Mathf.Abs(i) * .012f, -.145f),
-                        new Vector3(.04f, .11f, .035f),
-                        hair,
-                        headRoot);
-                }
-            }
-            else if (headwear == 2)
+
+            if (style == 2)
             {
                 WorldArt.ChamferedBox(
                     "Кепка",
@@ -225,76 +236,30 @@ namespace WarmBread
                     new Vector3(.24f, .035f, .14f),
                     .018f,
                     coatDark);
-            }
-            else
-            {
-                WorldArt.Shape(
-                    PrimitiveType.Sphere,
-                    "Волосы",
-                    new Vector3(0f, .13f, .02f),
-                    new Vector3(.33f, .19f, .3f),
-                    hair,
-                    headRoot);
+                return;
             }
 
-            rig.LeftArm = BuildArm(visual, -1, coat, skin);
-            rig.RightArm = BuildArm(visual, 1, coat, skin);
-            rig.LeftLeg = BuildLeg(visual, -1, trousers, shoes);
-            rig.RightLeg = BuildLeg(visual, 1, trousers, shoes);
+            WorldArt.Shape(
+                PrimitiveType.Sphere,
+                "Волосы",
+                new Vector3(0f, .14f, .02f),
+                new Vector3(.33f, .19f, .3f),
+                hair,
+                headRoot);
 
-            if (Math.Abs(seed) % 3 == 0)
+            if (style == 1)
             {
-                var bag = new GameObject("Сумка").transform;
-                bag.SetParent(visual, false);
-                bag.localPosition = new Vector3(.34f, .82f, .02f);
-                WorldArt.ChamferedBox(
-                    "Корпус сумки",
-                    bag,
-                    Vector3.zero,
-                    new Vector3(.28f, .34f, .14f),
-                    .04f,
-                    WorldArt.Material("Сумка " + id, Color.Lerp(coatColor, Color.black, .46f), .3f, true));
-                var strap = WorldArt.SharedMesh(
-                    "model:bag-strap",
-                    () => ProceduralMeshFactory.CreateTorus("Ремень сумки", .28f, .015f, 24, 6));
-                WorldArt.MeshObject(
-                    "Ремень",
-                    strap,
-                    coatDark,
-                    bag,
-                    new Vector3(-.16f, .28f, 0f),
-                    Quaternion.Euler(90f, 0f, 20f),
-                    new Vector3(.75f, 1.2f, .6f));
-                rig.Accessory = bag;
+                for (var strand = -2; strand <= 2; strand++)
+                {
+                    WorldArt.Shape(
+                        PrimitiveType.Capsule,
+                        "Прядь",
+                        new Vector3(strand * .055f, .02f + Mathf.Abs(strand) * .012f, -.145f),
+                        new Vector3(.04f, .11f, .035f),
+                        hair,
+                        headRoot);
+                }
             }
-            else if (Math.Abs(seed) % 5 == 0)
-            {
-                var umbrella = new GameObject("Сложенный зонт").transform;
-                umbrella.SetParent(rig.RightArm, false);
-                umbrella.localPosition = new Vector3(0f, -.56f, -.03f);
-                WorldArt.Shape(
-                    PrimitiveType.Cylinder,
-                    "Трость зонта",
-                    Vector3.zero,
-                    new Vector3(.018f, .36f, .018f),
-                    WorldArt.MetalMaterial("Зонт металл", new Color(.22f, .24f, .24f)),
-                    umbrella);
-                WorldArt.Shape(
-                    PrimitiveType.Cone,
-                    "Ткань зонта",
-                    new Vector3(0f, -.31f, 0f),
-                    new Vector3(.09f, .23f, .09f),
-                    scarf,
-                    umbrella);
-                rig.Accessory = umbrella;
-            }
-
-            if (data != null && data.Child)
-            {
-                visual.localScale = Vector3.one * .8f;
-            }
-
-            return rig;
         }
 
         private static Transform BuildArm(Transform parent, int side, Material coat, Material skin)
@@ -303,14 +268,14 @@ namespace WarmBread
             pivot.SetParent(parent, false);
             pivot.localPosition = new Vector3(side * .32f, 1.34f, 0f);
 
-            var upper = WorldArt.ChamferedBox(
+            var sleeve = WorldArt.ChamferedBox(
                 "Рукав",
                 pivot,
                 new Vector3(side * .04f, -.24f, 0f),
                 new Vector3(.17f, .48f, .2f),
                 .06f,
                 coat);
-            upper.transform.localRotation = Quaternion.Euler(0f, 0f, side * -4f);
+            sleeve.transform.localRotation = Quaternion.Euler(0f, 0f, side * -4f);
             WorldArt.Shape(
                 PrimitiveType.Sphere,
                 "Кисть",
@@ -344,6 +309,57 @@ namespace WarmBread
             return pivot;
         }
 
+        private static Transform BuildBag(Transform parent, string id, Color coatColor, Material strapMaterial)
+        {
+            var bag = new GameObject("Сумка").transform;
+            bag.SetParent(parent, false);
+            bag.localPosition = new Vector3(.34f, .82f, .02f);
+            WorldArt.ChamferedBox(
+                "Корпус сумки",
+                bag,
+                Vector3.zero,
+                new Vector3(.28f, .34f, .14f),
+                .04f,
+                WorldArt.Material(
+                    "Сумка " + id,
+                    Color.Lerp(coatColor, Color.black, .46f),
+                    .3f,
+                    true));
+            var strap = WorldArt.SharedMesh(
+                "model:bag-strap",
+                () => ProceduralMeshFactory.CreateTorus("Ремень сумки", .28f, .015f, 24, 6));
+            WorldArt.MeshObject(
+                "Ремень",
+                strap,
+                strapMaterial,
+                bag,
+                new Vector3(-.16f, .28f, 0f),
+                Quaternion.Euler(90f, 0f, 20f),
+                new Vector3(.75f, 1.2f, .6f));
+            return bag;
+        }
+
+        private static Transform BuildUmbrella(Transform hand, Material cloth)
+        {
+            var umbrella = new GameObject("Сложенный зонт").transform;
+            umbrella.SetParent(hand, false);
+            umbrella.localPosition = new Vector3(0f, -.56f, -.03f);
+            WorldArt.Shape(
+                PrimitiveType.Cylinder,
+                "Трость зонта",
+                Vector3.zero,
+                new Vector3(.018f, .36f, .018f),
+                WorldArt.MetalMaterial("Зонт металл", new Color(.22f, .24f, .24f)),
+                umbrella);
+            Cone(
+                "Ткань зонта",
+                umbrella,
+                new Vector3(0f, -.31f, 0f),
+                new Vector3(.18f, .46f, .18f),
+                cloth);
+            return umbrella;
+        }
+
         public static GameObject BuildCar(
             Transform parent,
             string name,
@@ -357,12 +373,28 @@ namespace WarmBread
             root.transform.localPosition = position;
 
             var paint = WorldArt.Material(name + " paint", bodyColor, .54f, true, 0f, .18f);
-            var paintDark = WorldArt.Material(name + " dark paint", Color.Lerp(bodyColor, Color.black, .34f), .48f, true, 0f, .2f);
+            var paintDark = WorldArt.Material(
+                name + " dark paint",
+                Color.Lerp(bodyColor, Color.black, .34f),
+                .48f,
+                true,
+                0f,
+                .2f);
             var chrome = WorldArt.MetalMaterial("Авто хром", new Color(.58f, .61f, .58f), .75f);
             var rubber = WorldArt.Material("Авто резина", new Color(.025f, .03f, .03f), .18f, true);
             var glass = WorldArt.GlassMaterial("Авто стекло", new Color(.17f, .28f, .32f, .42f), .94f);
-            var headlight = WorldArt.Material("Фары", new Color(1f, .84f, .48f), .7f, false, 1.2f);
-            var tail = WorldArt.Material("Задние фонари", new Color(.72f, .08f, .04f), .65f, false, .75f);
+            var headlight = WorldArt.Material(
+                "Фары",
+                new Color(1f, .84f, .48f),
+                .7f,
+                false,
+                1.2f);
+            var tail = WorldArt.Material(
+                "Задние фонари",
+                new Color(.72f, .08f, .04f),
+                .65f,
+                false,
+                .75f);
 
             WorldArt.ChamferedBox(
                 "Кузов",
@@ -403,7 +435,7 @@ namespace WarmBread
             WorldArt.ChamferedBox(
                 "Заднее стекло",
                 root.transform,
-                new Vector3(-1.0f, 1.17f, 0f),
+                new Vector3(-1f, 1.17f, 0f),
                 new Vector3(.035f, .45f, 1.15f),
                 .012f,
                 glass);
@@ -438,9 +470,8 @@ namespace WarmBread
                     new Vector3(.16f, .1f, .08f),
                     .025f,
                     paintDark);
-
-                BuildWheel(root.transform, new Vector3(1.15f, .32f, side * .79f), rubber, chrome, side);
-                BuildWheel(root.transform, new Vector3(-1.18f, .32f, side * .79f), rubber, chrome, side);
+                BuildWheel(root.transform, new Vector3(1.15f, .32f, side * .79f), rubber, chrome);
+                BuildWheel(root.transform, new Vector3(-1.18f, .32f, side * .79f), rubber, chrome);
             }
 
             WorldArt.ChamferedBox(
@@ -494,7 +525,7 @@ namespace WarmBread
             return root;
         }
 
-        private static void BuildWheel(Transform parent, Vector3 position, Material rubber, Material chrome, int side)
+        private static void BuildWheel(Transform parent, Vector3 position, Material rubber, Material chrome)
         {
             var wheel = new GameObject("Колесо").transform;
             wheel.SetParent(parent, false);
@@ -504,7 +535,14 @@ namespace WarmBread
             var tireMesh = WorldArt.SharedMesh(
                 "model:car-tire",
                 () => ProceduralMeshFactory.CreateTorus("Автомобильная шина", .24f, .09f, 24, 10));
-            WorldArt.MeshObject("Шина", tireMesh, rubber, wheel, Vector3.zero, Quaternion.identity, Vector3.one);
+            WorldArt.MeshObject(
+                "Шина",
+                tireMesh,
+                rubber,
+                wheel,
+                Vector3.zero,
+                Quaternion.identity,
+                Vector3.one);
             WorldArt.Shape(
                 PrimitiveType.Cylinder,
                 "Колпак",
@@ -512,7 +550,6 @@ namespace WarmBread
                 new Vector3(.14f, .055f, .14f),
                 chrome,
                 wheel);
-            wheel.localScale = new Vector3(1f, side < 0 ? -1f : 1f, 1f);
         }
 
         public static GameObject BuildBench(Transform parent, Vector3 position, Material wood, Material metal)
@@ -573,7 +610,10 @@ namespace WarmBread
             root.transform.localPosition = position;
 
             var bark = WorldArt.Material("Кора тополя", new Color(.24f, .22f, .17f), .1f, true);
-            var leafBase = Color.Lerp(new Color(.22f, .28f, .13f), new Color(.43f, .38f, .12f), Mathf.Repeat(variant * .13f, 1f));
+            var leafBase = Color.Lerp(
+                new Color(.22f, .28f, .13f),
+                new Color(.43f, .38f, .12f),
+                Mathf.Repeat(variant * .13f, 1f));
             var leaves = WorldArt.Material("Листва " + variant, leafBase, .08f, true);
 
             WorldArt.Shape(
@@ -591,7 +631,10 @@ namespace WarmBread
                 var limb = WorldArt.Shape(
                     PrimitiveType.Cylinder,
                     "Ветка",
-                    new Vector3(Mathf.Cos(angle) * .4f, 4.4f + branch * .22f, Mathf.Sin(angle) * .4f),
+                    new Vector3(
+                        Mathf.Cos(angle) * .4f,
+                        4.4f + branch * .22f,
+                        Mathf.Sin(angle) * .4f),
                     new Vector3(.07f, 1.25f, .07f),
                     bark,
                     root.transform);
@@ -608,7 +651,8 @@ namespace WarmBread
                     PrimitiveType.Sphere,
                     "Крона",
                     new Vector3(Mathf.Cos(angle) * radius, height, Mathf.Sin(angle) * radius),
-                    new Vector3(1.35f, 1.85f, 1.2f) * (.75f + (float)random.NextDouble() * .45f),
+                    new Vector3(1.35f, 1.85f, 1.2f) *
+                    (.75f + (float)random.NextDouble() * .45f),
                     leaves,
                     root.transform);
             }
@@ -616,29 +660,77 @@ namespace WarmBread
             return root;
         }
 
-        public static GameObject BuildStreetLamp(Transform parent, Vector3 position, Material metal, Material shade)
+        public static GameObject BuildStreetLamp(
+            Transform parent,
+            Vector3 position,
+            Material metal,
+            Material shade)
         {
             var root = new GameObject("Уличный фонарь");
             root.transform.SetParent(parent, false);
             root.transform.localPosition = position;
 
-            WorldArt.Shape(PrimitiveType.Cylinder, "Столб", new Vector3(0f, 3.2f, 0f), new Vector3(.11f, 3.2f, .11f), metal, root.transform, true);
-            var arm = WorldArt.Shape(PrimitiveType.Cylinder, "Кронштейн", new Vector3(.38f, 6.17f, 0f), new Vector3(.055f, .48f, .055f), metal, root.transform);
+            WorldArt.Shape(
+                PrimitiveType.Cylinder,
+                "Столб",
+                new Vector3(0f, 3.2f, 0f),
+                new Vector3(.11f, 3.2f, .11f),
+                metal,
+                root.transform,
+                true);
+            var arm = WorldArt.Shape(
+                PrimitiveType.Cylinder,
+                "Кронштейн",
+                new Vector3(.38f, 6.17f, 0f),
+                new Vector3(.055f, .48f, .055f),
+                metal,
+                root.transform);
             arm.transform.localRotation = Quaternion.Euler(0f, 0f, 62f);
-            WorldArt.ChamferedBox("Плафон", root.transform, new Vector3(.72f, 6.35f, 0f), new Vector3(.62f, .18f, .46f), .065f, shade);
-            WorldArt.Lamp("Свет фонаря", new Vector3(.72f, 6.15f, 0f), new Color(1f, .72f, .34f), 1.45f, 12f, root.transform);
+            WorldArt.ChamferedBox(
+                "Плафон",
+                root.transform,
+                new Vector3(.72f, 6.35f, 0f),
+                new Vector3(.62f, .18f, .46f),
+                .065f,
+                shade);
+            WorldArt.Lamp(
+                "Свет фонаря",
+                new Vector3(.72f, 6.15f, 0f),
+                new Color(1f, .72f, .34f),
+                1.45f,
+                12f,
+                root.transform);
             return root;
         }
 
-        public static GameObject BuildCashRegister(Transform parent, Vector3 position, Material enamel, Material dark, Material glass)
+        public static GameObject BuildCashRegister(
+            Transform parent,
+            Vector3 position,
+            Material enamel,
+            Material dark,
+            Material glass)
         {
             var root = new GameObject("Касса Электроника");
             root.transform.SetParent(parent, false);
             root.transform.localPosition = position;
 
-            WorldArt.ChamferedBox("Корпус", root.transform, Vector3.zero, new Vector3(.62f, .27f, .48f), .06f, enamel, true);
-            var display = WorldArt.ChamferedBox("Дисплей", root.transform, new Vector3(0f, .12f, -.247f), new Vector3(.4f, .1f, .018f), .015f, glass);
+            WorldArt.ChamferedBox(
+                "Корпус",
+                root.transform,
+                Vector3.zero,
+                new Vector3(.62f, .27f, .48f),
+                .06f,
+                enamel,
+                true);
+            var display = WorldArt.ChamferedBox(
+                "Дисплей",
+                root.transform,
+                new Vector3(0f, .12f, -.247f),
+                new Vector3(.4f, .1f, .018f),
+                .015f,
+                glass);
             display.transform.localRotation = Quaternion.Euler(-4f, 0f, 0f);
+
             for (var row = 0; row < 3; row++)
             {
                 for (var column = 0; column < 4; column++)
@@ -652,19 +744,55 @@ namespace WarmBread
                         column == 3 ? enamel : dark);
                 }
             }
-            WorldArt.ChamferedBox("Денежный ящик", root.transform, new Vector3(0f, -.09f, -.252f), new Vector3(.48f, .08f, .018f), .01f, dark);
+
+            WorldArt.ChamferedBox(
+                "Денежный ящик",
+                root.transform,
+                new Vector3(0f, -.09f, -.252f),
+                new Vector3(.48f, .08f, .018f),
+                .01f,
+                dark);
             return root;
         }
 
-        public static GameObject BuildRadio(Transform parent, Vector3 position, Material wood, Material metal, Material dark)
+        public static GameObject BuildRadio(
+            Transform parent,
+            Vector3 position,
+            Material wood,
+            Material metal,
+            Material dark)
         {
             var root = new GameObject("Радиоприёмник");
             root.transform.SetParent(parent, false);
             root.transform.localPosition = position;
 
-            WorldArt.ChamferedBox("Корпус", root.transform, Vector3.zero, new Vector3(.62f, .4f, .28f), .065f, wood, true);
-            WorldArt.ChamferedBox("Шкала", root.transform, new Vector3(.1f, .09f, -.147f), new Vector3(.34f, .08f, .014f), .01f, WorldArt.GlassMaterial("Стекло радио", new Color(.52f, .46f, .24f, .5f)));
-            WorldArt.ChamferedBox("Индикатор", root.transform, new Vector3(.02f, .09f, -.157f), new Vector3(.012f, .065f, .008f), .003f, WorldArt.Material("Красный индикатор", new Color(.7f, .12f, .05f), .4f, false, .8f));
+            WorldArt.ChamferedBox(
+                "Корпус",
+                root.transform,
+                Vector3.zero,
+                new Vector3(.62f, .4f, .28f),
+                .065f,
+                wood,
+                true);
+            WorldArt.ChamferedBox(
+                "Шкала",
+                root.transform,
+                new Vector3(.1f, .09f, -.147f),
+                new Vector3(.34f, .08f, .014f),
+                .01f,
+                WorldArt.GlassMaterial("Стекло радио", new Color(.52f, .46f, .24f, .5f)));
+            WorldArt.ChamferedBox(
+                "Индикатор",
+                root.transform,
+                new Vector3(.02f, .09f, -.157f),
+                new Vector3(.012f, .065f, .008f),
+                .003f,
+                WorldArt.Material(
+                    "Красный индикатор",
+                    new Color(.7f, .12f, .05f),
+                    .4f,
+                    false,
+                    .8f));
 
             for (var row = 0; row < 4; row++)
             {
@@ -680,13 +808,30 @@ namespace WarmBread
                 }
             }
 
-            WorldArt.Shape(PrimitiveType.Cylinder, "Ручка громкости", new Vector3(.23f, -.09f, -.16f), new Vector3(.045f, .025f, .045f), metal, root.transform);
-            var antenna = WorldArt.Shape(PrimitiveType.Cylinder, "Антенна", new Vector3(-.2f, .58f, .02f), new Vector3(.008f, .42f, .008f), metal, root.transform);
+            WorldArt.Shape(
+                PrimitiveType.Cylinder,
+                "Ручка громкости",
+                new Vector3(.23f, -.09f, -.16f),
+                new Vector3(.045f, .025f, .045f),
+                metal,
+                root.transform);
+            var antenna = WorldArt.Shape(
+                PrimitiveType.Cylinder,
+                "Антенна",
+                new Vector3(-.2f, .58f, .02f),
+                new Vector3(.008f, .42f, .008f),
+                metal,
+                root.transform);
             antenna.transform.localRotation = Quaternion.Euler(0f, 0f, -17f);
             return root;
         }
 
-        public static GameObject BuildKettle(Transform parent, Vector3 position, Material enamel, Material metal, Material dark)
+        public static GameObject BuildKettle(
+            Transform parent,
+            Vector3 position,
+            Material enamel,
+            Material metal,
+            Material dark)
         {
             var root = new GameObject("Эмалированный чайник");
             root.transform.SetParent(parent, false);
@@ -700,38 +845,112 @@ namespace WarmBread
                 new Vector2(.18f, .34f),
                 new Vector2(.11f, .38f)
             };
-            var bodyMesh = WorldArt.SharedMesh("model:kettle-body", () => ProceduralMeshFactory.CreateLathe("Корпус чайника", profile, 24));
-            WorldArt.MeshObject("Корпус", bodyMesh, enamel, root.transform, Vector3.zero, Quaternion.identity, Vector3.one, true);
-            WorldArt.Shape(PrimitiveType.Cylinder, "Крышка", new Vector3(0f, .4f, 0f), new Vector3(.13f, .025f, .13f), metal, root.transform);
-            WorldArt.Shape(PrimitiveType.Sphere, "Ручка крышки", new Vector3(0f, .45f, 0f), Vector3.one * .045f, dark, root.transform);
+            var bodyMesh = WorldArt.SharedMesh(
+                "model:kettle-body",
+                () => ProceduralMeshFactory.CreateLathe("Корпус чайника", profile, 24));
+            WorldArt.MeshObject(
+                "Корпус",
+                bodyMesh,
+                enamel,
+                root.transform,
+                Vector3.zero,
+                Quaternion.identity,
+                Vector3.one,
+                true);
+            WorldArt.Shape(
+                PrimitiveType.Cylinder,
+                "Крышка",
+                new Vector3(0f, .4f, 0f),
+                new Vector3(.13f, .025f, .13f),
+                metal,
+                root.transform);
+            WorldArt.Shape(
+                PrimitiveType.Sphere,
+                "Ручка крышки",
+                new Vector3(0f, .45f, 0f),
+                Vector3.one * .045f,
+                dark,
+                root.transform);
 
-            var spout = WorldArt.Shape(PrimitiveType.Cylinder, "Носик", new Vector3(.25f, .27f, 0f), new Vector3(.075f, .23f, .075f), enamel, root.transform);
+            var spout = WorldArt.Shape(
+                PrimitiveType.Cylinder,
+                "Носик",
+                new Vector3(.25f, .27f, 0f),
+                new Vector3(.075f, .23f, .075f),
+                enamel,
+                root.transform);
             spout.transform.localRotation = Quaternion.Euler(0f, 0f, -58f);
 
-            var handleMesh = WorldArt.SharedMesh("model:kettle-handle", () => ProceduralMeshFactory.CreateTorus("Ручка чайника", .24f, .025f, 24, 8));
-            var handle = WorldArt.MeshObject("Ручка", handleMesh, dark, root.transform, new Vector3(-.1f, .25f, 0f), Quaternion.Euler(90f, 0f, 0f), new Vector3(1f, 1.15f, 1f));
-            handle.transform.localScale = new Vector3(.85f, 1.15f, 1f);
+            var handleMesh = WorldArt.SharedMesh(
+                "model:kettle-handle",
+                () => ProceduralMeshFactory.CreateTorus("Ручка чайника", .24f, .025f, 24, 8));
+            WorldArt.MeshObject(
+                "Ручка",
+                handleMesh,
+                dark,
+                root.transform,
+                new Vector3(-.1f, .25f, 0f),
+                Quaternion.Euler(90f, 0f, 0f),
+                new Vector3(.85f, 1.15f, 1f));
             return root;
         }
 
-        public static GameObject BuildPhone(Transform parent, Vector3 position, Material bodyMaterial, Material dark)
+        public static GameObject BuildPhone(
+            Transform parent,
+            Vector3 position,
+            Material bodyMaterial,
+            Material dark)
         {
             var root = new GameObject("Дисковый телефон");
             root.transform.SetParent(parent, false);
             root.transform.localPosition = position;
 
-            WorldArt.ChamferedBox("Основание", root.transform, Vector3.zero, new Vector3(.46f, .18f, .36f), .065f, bodyMaterial, true);
-            var disk = WorldArt.SharedMesh("model:phone-dial", () => ProceduralMeshFactory.CreateTorus("Диск телефона", .095f, .025f, 20, 8));
-            WorldArt.MeshObject("Наборный диск", disk, dark, root.transform, new Vector3(0f, .105f, -.08f), Quaternion.Euler(90f, 0f, 0f), Vector3.one);
-            WorldArt.Shape(PrimitiveType.Cylinder, "Центр диска", new Vector3(0f, .11f, -.08f), new Vector3(.05f, .018f, .05f), bodyMaterial, root.transform);
+            WorldArt.ChamferedBox(
+                "Основание",
+                root.transform,
+                Vector3.zero,
+                new Vector3(.46f, .18f, .36f),
+                .065f,
+                bodyMaterial,
+                true);
+            var disk = WorldArt.SharedMesh(
+                "model:phone-dial",
+                () => ProceduralMeshFactory.CreateTorus("Диск телефона", .095f, .025f, 20, 8));
+            WorldArt.MeshObject(
+                "Наборный диск",
+                disk,
+                dark,
+                root.transform,
+                new Vector3(0f, .105f, -.08f),
+                Quaternion.Euler(90f, 0f, 0f),
+                Vector3.one);
+            WorldArt.Shape(
+                PrimitiveType.Cylinder,
+                "Центр диска",
+                new Vector3(0f, .11f, -.08f),
+                new Vector3(.05f, .018f, .05f),
+                bodyMaterial,
+                root.transform);
 
             var handset = new GameObject("Трубка").transform;
             handset.SetParent(root.transform, false);
             handset.localPosition = new Vector3(0f, .2f, 0f);
-            WorldArt.ChamferedBox("Рукоять", handset, Vector3.zero, new Vector3(.32f, .065f, .08f), .025f, dark);
+            WorldArt.ChamferedBox(
+                "Рукоять",
+                handset,
+                Vector3.zero,
+                new Vector3(.32f, .065f, .08f),
+                .025f,
+                dark);
             for (var side = -1; side <= 1; side += 2)
             {
-                WorldArt.Shape(PrimitiveType.Sphere, "Динамик", new Vector3(side * .18f, 0f, 0f), new Vector3(.11f, .09f, .11f), dark, handset);
+                WorldArt.Shape(
+                    PrimitiveType.Sphere,
+                    "Динамик",
+                    new Vector3(side * .18f, 0f, 0f),
+                    new Vector3(.11f, .09f, .11f),
+                    dark,
+                    handset);
             }
             return root;
         }
@@ -747,16 +966,52 @@ namespace WarmBread
             var dark = WorldArt.Material("Глаза Плюша", new Color(.05f, .06f, .045f), .3f);
             var green = WorldArt.Material("Зелёные глаза Плюша", new Color(.36f, .62f, .27f), .55f);
 
-            WorldArt.Shape(PrimitiveType.Sphere, "Туловище", new Vector3(-.08f, .14f, 0f), new Vector3(.46f, .25f, .28f), orange, root.transform, true);
-            WorldArt.Shape(PrimitiveType.Sphere, "Голова", new Vector3(.24f, .22f, -.03f), new Vector3(.23f, .21f, .22f), orange, root.transform);
-            WorldArt.Shape(PrimitiveType.Sphere, "Грудка", new Vector3(.12f, .13f, -.14f), new Vector3(.18f, .17f, .08f), light, root.transform);
+            WorldArt.Shape(
+                PrimitiveType.Sphere,
+                "Туловище",
+                new Vector3(-.08f, .14f, 0f),
+                new Vector3(.46f, .25f, .28f),
+                orange,
+                root.transform,
+                true);
+            WorldArt.Shape(
+                PrimitiveType.Sphere,
+                "Голова",
+                new Vector3(.24f, .22f, -.03f),
+                new Vector3(.23f, .21f, .22f),
+                orange,
+                root.transform);
+            WorldArt.Shape(
+                PrimitiveType.Sphere,
+                "Грудка",
+                new Vector3(.12f, .13f, -.14f),
+                new Vector3(.18f, .17f, .08f),
+                light,
+                root.transform);
 
             for (var side = -1; side <= 1; side += 2)
             {
-                var ear = WorldArt.Shape(PrimitiveType.Cone, "Ухо", new Vector3(.24f + side * .095f, .43f, -.02f), new Vector3(.085f, .13f, .075f), orange, root.transform);
+                var ear = Cone(
+                    "Ухо",
+                    root.transform,
+                    new Vector3(.24f + side * .095f, .43f, -.02f),
+                    new Vector3(.17f, .26f, .15f),
+                    orange);
                 ear.transform.localRotation = Quaternion.Euler(0f, 0f, side * -12f);
-                WorldArt.Shape(PrimitiveType.Sphere, "Глаз", new Vector3(.24f + side * .065f, .25f, -.19f), new Vector3(.036f, .045f, .018f), green, root.transform);
-                WorldArt.Shape(PrimitiveType.Sphere, "Зрачок", new Vector3(.24f + side * .065f, .25f, -.208f), new Vector3(.012f, .034f, .007f), dark, root.transform);
+                WorldArt.Shape(
+                    PrimitiveType.Sphere,
+                    "Глаз",
+                    new Vector3(.24f + side * .065f, .25f, -.19f),
+                    new Vector3(.036f, .045f, .018f),
+                    green,
+                    root.transform);
+                WorldArt.Shape(
+                    PrimitiveType.Sphere,
+                    "Зрачок",
+                    new Vector3(.24f + side * .065f, .25f, -.208f),
+                    new Vector3(.012f, .034f, .007f),
+                    dark,
+                    root.transform);
                 WorldArt.Line(
                     "Усы",
                     new[]
@@ -769,24 +1024,59 @@ namespace WarmBread
                     root.transform);
             }
 
-            WorldArt.Shape(PrimitiveType.Sphere, "Нос", new Vector3(.24f, .175f, -.215f), Vector3.one * .028f, dark, root.transform);
-            var tailMesh = WorldArt.SharedMesh("model:cat-tail", () => ProceduralMeshFactory.CreateTorus("Хвост", .24f, .045f, 24, 8));
-            WorldArt.MeshObject("Хвост", tailMesh, orange, root.transform, new Vector3(-.36f, .15f, .05f), Quaternion.Euler(90f, 0f, 25f), new Vector3(1f, .85f, 1f));
+            WorldArt.Shape(
+                PrimitiveType.Sphere,
+                "Нос",
+                new Vector3(.24f, .175f, -.215f),
+                Vector3.one * .028f,
+                dark,
+                root.transform);
+            var tailMesh = WorldArt.SharedMesh(
+                "model:cat-tail",
+                () => ProceduralMeshFactory.CreateTorus("Хвост", .24f, .045f, 24, 8));
+            WorldArt.MeshObject(
+                "Хвост",
+                tailMesh,
+                orange,
+                root.transform,
+                new Vector3(-.36f, .15f, .05f),
+                Quaternion.Euler(90f, 0f, 25f),
+                new Vector3(1f, .85f, 1f));
             return root;
         }
 
-        public static GameObject BuildCrate(Transform parent, Vector3 position, Vector3 size, Material wood)
+        public static GameObject BuildCrate(
+            Transform parent,
+            Vector3 position,
+            Vector3 size,
+            Material wood)
         {
             var root = new GameObject("Деревянный ящик");
             root.transform.SetParent(parent, false);
             root.transform.localPosition = position;
             WorldArt.ChamferedBox("Основа", root.transform, Vector3.zero, size, .025f, wood, true);
-            var strip = WorldArt.Material("Рейки ящика", Color.Lerp(new Color(.42f, .27f, .13f), Color.black, .12f), .12f, true);
+            var strip = WorldArt.Material(
+                "Рейки ящика",
+                Color.Lerp(new Color(.42f, .27f, .13f), Color.black, .12f),
+                .12f,
+                true);
             for (var side = -1; side <= 1; side += 2)
             {
-                WorldArt.ChamferedBox("Вертикальная рейка", root.transform, new Vector3(side * size.x * .38f, 0f, -size.z * .51f), new Vector3(.06f, size.y * .92f, .025f), .008f, strip);
+                WorldArt.ChamferedBox(
+                    "Вертикальная рейка",
+                    root.transform,
+                    new Vector3(side * size.x * .38f, 0f, -size.z * .51f),
+                    new Vector3(.06f, size.y * .92f, .025f),
+                    .008f,
+                    strip);
             }
-            WorldArt.ChamferedBox("Горизонтальная рейка", root.transform, new Vector3(0f, 0f, -size.z * .51f), new Vector3(size.x * .92f, .055f, .025f), .008f, strip);
+            WorldArt.ChamferedBox(
+                "Горизонтальная рейка",
+                root.transform,
+                new Vector3(0f, 0f, -size.z * .51f),
+                new Vector3(size.x * .92f, .055f, .025f),
+                .008f,
+                strip);
             return root;
         }
 
@@ -803,11 +1093,59 @@ namespace WarmBread
                 new Vector2(.075f, .15f),
                 new Vector2(.078f, .165f)
             };
-            var mugMesh = WorldArt.SharedMesh("model:mug", () => ProceduralMeshFactory.CreateLathe("Кружка", profile, 20, true, false));
-            WorldArt.MeshObject("Чашка", mugMesh, enamel, root.transform, Vector3.zero, Quaternion.identity, Vector3.one);
-            var handleMesh = WorldArt.SharedMesh("model:mug-handle", () => ProceduralMeshFactory.CreateTorus("Ручка кружки", .065f, .014f, 18, 6));
-            WorldArt.MeshObject("Ручка", handleMesh, enamel, root.transform, new Vector3(.075f, .085f, 0f), Quaternion.Euler(90f, 0f, 0f), new Vector3(.75f, 1f, 1f));
+            var mugMesh = WorldArt.SharedMesh(
+                "model:mug",
+                () => ProceduralMeshFactory.CreateLathe("Кружка", profile, 20, true, false));
+            WorldArt.MeshObject(
+                "Чашка",
+                mugMesh,
+                enamel,
+                root.transform,
+                Vector3.zero,
+                Quaternion.identity,
+                Vector3.one);
+            var handleMesh = WorldArt.SharedMesh(
+                "model:mug-handle",
+                () => ProceduralMeshFactory.CreateTorus("Ручка кружки", .065f, .014f, 18, 6));
+            WorldArt.MeshObject(
+                "Ручка",
+                handleMesh,
+                enamel,
+                root.transform,
+                new Vector3(.075f, .085f, 0f),
+                Quaternion.Euler(90f, 0f, 0f),
+                new Vector3(.75f, 1f, 1f));
             return root;
+        }
+
+        private static GameObject Cone(
+            string name,
+            Transform parent,
+            Vector3 position,
+            Vector3 size,
+            Material material)
+        {
+            var mesh = WorldArt.SharedMesh(
+                "model:unit-cone",
+                () => ProceduralMeshFactory.CreateLathe(
+                    "Конус",
+                    new[]
+                    {
+                        new Vector2(.5f, -.5f),
+                        new Vector2(.5f, -.43f),
+                        new Vector2(0f, .5f)
+                    },
+                    18,
+                    true,
+                    false));
+            return WorldArt.MeshObject(
+                name,
+                mesh,
+                material,
+                parent,
+                position,
+                Quaternion.identity,
+                size);
         }
 
         private static int StableHash(string value)
@@ -816,7 +1154,7 @@ namespace WarmBread
             {
                 var hash = 23;
                 value = value ?? string.Empty;
-                for (var i = 0; i < value.Length; i++) hash = hash * 31 + value[i];
+                for (var index = 0; index < value.Length; index++) hash = hash * 31 + value[index];
                 return hash;
             }
         }
