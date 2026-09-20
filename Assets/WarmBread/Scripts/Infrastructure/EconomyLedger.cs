@@ -30,7 +30,7 @@ namespace WarmBread
 
         public bool TryApply(MoneyOperation operation, int amount, string note = null)
         {
-            if (amount == 0 || Mathf.Abs((long)amount) > maximumBalance) return false;
+            if (amount == 0 || Math.Abs((long)amount) > maximumBalance) return false;
             long next = (long)Balance + amount;
             if (next < minimumBalance || next > maximumBalance) return false;
 
