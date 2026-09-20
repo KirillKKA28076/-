@@ -8,7 +8,9 @@ namespace WarmBread
     {
         private const int MaxStockBatches = 5000;
         private const int MaxJournalEntries = 1000;
+        private const int MaxCampaignCounter = 1000000;
 
+        // Имя оставлено прежним, чтобы сохранения ранних версий автоматически мигрировали.
         public static string PathName => Path.Combine(Application.persistentDataPath, "warm-bread-v1.json");
         public static bool Exists => File.Exists(PathName) || File.Exists(PathName + ".bak");
 
@@ -19,6 +21,8 @@ namespace WarmBread
             try
             {
                 data.version = SaveData.CurrentVersion;
+                SanitizeForWrite(data);
+
                 var path = PathName;
                 var temp = path + ".tmp";
                 var backup = path + ".bak";
@@ -51,6 +55,7 @@ namespace WarmBread
             catch (Exception exception)
             {
                 Debug.LogWarning("Сохранение не записано: " + exception.Message);
+                TryDeleteTemporary();
                 return false;
             }
         }
@@ -63,7 +68,10 @@ namespace WarmBread
                 {
                     if (!File.Exists(path)) continue;
 
-                    var data = JsonUtility.FromJson<SaveData>(File.ReadAllText(path));
+                    var text = File.ReadAllText(path);
+                    if (string.IsNullOrWhiteSpace(text) || text.Length > 8 * 1024 * 1024) continue;
+
+                    var data = JsonUtility.FromJson<SaveData>(text);
                     if (!TryMigrateAndValidate(data)) continue;
                     return data;
                 }
@@ -76,6 +84,24 @@ namespace WarmBread
             return null;
         }
 
+        public static bool DeleteAll()
+        {
+            try
+            {
+                foreach (var path in new[] { PathName, PathName + ".bak", PathName + ".tmp" })
+                {
+                    if (File.Exists(path)) File.Delete(path);
+                }
+
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("Сохранение не удалено: " + exception.Message);
+                return false;
+            }
+        }
+
         private static void ReplaceWithFallback(string temp, string path, string backup)
         {
             if (File.Exists(path)) File.Copy(path, backup, true);
@@ -85,39 +111,56 @@ namespace WarmBread
 
         private static bool TryMigrateAndValidate(SaveData data)
         {
-            if (data == null) return false;
+            if (data == null || data.version < 1 || data.version > SaveData.CurrentVersion) return false;
 
-            if (data.version == 1)
-            {
-                data.version = SaveData.CurrentVersion;
-                if (data.journalIds == null) data.journalIds = new System.Collections.Generic.List<string>();
-            }
-
-            if (data.version != SaveData.CurrentVersion ||
-                data.day < 1 ||
-                data.day > 100000 ||
-                data.cash < -10000000 ||
-                data.cash > 100000000 ||
-                data.reputation < 0 ||
-                data.reputation > 100 ||
-                data.stock == null ||
-                data.journal == null)
-            {
-                return false;
-            }
-
-            if (data.journalIds == null)
+            if (data.version <= 1 && data.journalIds == null)
             {
                 data.journalIds = new System.Collections.Generic.List<string>();
             }
 
-            if (data.stock.Count > MaxStockBatches ||
+            if (data.version <= 2)
+            {
+                data.totalSales = Mathf.Max(0, data.totalSales);
+                data.totalRevenue = Mathf.Max(0, data.totalRevenue);
+                data.goalsCompleted = Mathf.Max(0, data.goalsCompleted);
+                data.campaignCompleted = false;
+                data.endingId = string.Empty;
+            }
+
+            data.version = SaveData.CurrentVersion;
+            if (data.stock == null || data.journal == null) return false;
+            if (data.journalIds == null) data.journalIds = new System.Collections.Generic.List<string>();
+            if (data.endingId == null) data.endingId = string.Empty;
+
+            if (data.day < 1 || data.day > 100000 ||
+                data.cash < -10000000 || data.cash > 100000000 ||
+                data.reputation < 0 || data.reputation > 100 ||
+                data.totalSales < 0 || data.totalSales > MaxCampaignCounter ||
+                data.totalRevenue < 0 || data.totalRevenue > 100000000 ||
+                data.goalsCompleted < 0 || data.goalsCompleted > MaxCampaignCounter ||
+                data.endingId.Length > 64 ||
+                data.stock.Count > MaxStockBatches ||
                 data.journal.Count > MaxJournalEntries ||
                 data.journalIds.Count > MaxJournalEntries)
             {
                 return false;
             }
 
+            SanitizeCollections(data);
+            return true;
+        }
+
+        private static void SanitizeForWrite(SaveData data)
+        {
+            if (data.stock == null) data.stock = new System.Collections.Generic.List<StockBatch>();
+            if (data.journal == null) data.journal = new System.Collections.Generic.List<string>();
+            if (data.journalIds == null) data.journalIds = new System.Collections.Generic.List<string>();
+            if (data.endingId == null) data.endingId = string.Empty;
+            SanitizeCollections(data);
+        }
+
+        private static void SanitizeCollections(SaveData data)
+        {
             data.stock.RemoveAll(batch =>
                 batch == null ||
                 string.IsNullOrWhiteSpace(batch.productId) ||
@@ -128,7 +171,34 @@ namespace WarmBread
 
             data.journal.RemoveAll(string.IsNullOrWhiteSpace);
             data.journalIds.RemoveAll(string.IsNullOrWhiteSpace);
-            return true;
+
+            if (data.stock.Count > MaxStockBatches)
+            {
+                data.stock.RemoveRange(MaxStockBatches, data.stock.Count - MaxStockBatches);
+            }
+
+            if (data.journal.Count > MaxJournalEntries)
+            {
+                data.journal.RemoveRange(MaxJournalEntries, data.journal.Count - MaxJournalEntries);
+            }
+
+            if (data.journalIds.Count > MaxJournalEntries)
+            {
+                data.journalIds.RemoveRange(MaxJournalEntries, data.journalIds.Count - MaxJournalEntries);
+            }
+        }
+
+        private static void TryDeleteTemporary()
+        {
+            try
+            {
+                var temp = PathName + ".tmp";
+                if (File.Exists(temp)) File.Delete(temp);
+            }
+            catch
+            {
+                // Вторичная очистка не должна скрывать исходную ошибку сохранения.
+            }
         }
     }
 }
