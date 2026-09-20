@@ -60,6 +60,13 @@ namespace WarmBread
             maxWaitSeconds = Mathf.Clamp(120f + reputationBonus + weatherPenalty + (child ? 10f : 0f), 75f, 165f);
 
             rig = ModelFactory.BuildCustomer(transform, data);
+            // ModelFactory builds facial details toward local -Z. Rotate only the visual rig
+            // so the NavMeshAgent can retain Unity's conventional +Z forward direction.
+            if (rig != null && rig.Root != null)
+            {
+                rig.Root.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            }
+
             CurrentState = State.Arriving;
             idlePhase = Mathf.Abs(GetInstanceID() % 1000) * .01f;
         }
