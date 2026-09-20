@@ -21,7 +21,7 @@ namespace WarmBread.Tests
         {
             foreach (var product in catalog)
             {
-                UnityEngine.Object.DestroyImmediate(product);
+                if (product != null) UnityEngine.Object.DestroyImmediate(product);
             }
         }
 
@@ -143,9 +143,18 @@ namespace WarmBread.Tests
         }
 
         [Test]
-        public void SaveRoundTripKeepsKopecksCyrillicAndStableIds()
+        public void SaveRoundTripKeepsCampaignProgressAndCyrillic()
         {
-            var data = new SaveData { cash = 50123, day = 3 };
+            var data = new SaveData
+            {
+                cash = 50123,
+                day = 6,
+                totalSales = 42,
+                totalRevenue = 83200,
+                goalsCompleted = 5,
+                campaignCompleted = true,
+                endingId = "warm-light"
+            };
             data.journal.Add("Хлеб любит тишину.");
             data.journalIds.Add("nina");
             data.stock.Add(new StockBatch("bread_white", 4, 6f));
@@ -153,6 +162,11 @@ namespace WarmBread.Tests
             var result = JsonUtility.FromJson<SaveData>(JsonUtility.ToJson(data));
             Assert.AreEqual(SaveData.CurrentVersion, result.version);
             Assert.AreEqual(50123, result.cash);
+            Assert.AreEqual(42, result.totalSales);
+            Assert.AreEqual(83200, result.totalRevenue);
+            Assert.AreEqual(5, result.goalsCompleted);
+            Assert.IsTrue(result.campaignCompleted);
+            Assert.AreEqual("warm-light", result.endingId);
             Assert.AreEqual("Хлеб любит тишину.", result.journal[0]);
             Assert.AreEqual("nina", result.journalIds[0]);
             Assert.AreEqual(4, result.stock[0].quantity);
@@ -192,8 +206,95 @@ namespace WarmBread.Tests
             {
                 foreach (var person in people)
                 {
-                    UnityEngine.Object.DestroyImmediate(person);
+                    if (person != null) UnityEngine.Object.DestroyImmediate(person);
                 }
+            }
+        }
+
+        [Test]
+        public void CampaignContainsSevenProgressiveDays()
+        {
+            Assert.AreEqual(7, CampaignRules.CampaignDays);
+            var titles = new HashSet<string>();
+            var previousSalesGoal = 0;
+
+            for (var day = 1; day <= CampaignRules.CampaignDays; day++)
+            {
+                var plan = CampaignRules.Get(day);
+                Assert.AreEqual(day, plan.Day);
+                Assert.IsTrue(titles.Add(plan.Title));
+                Assert.GreaterOrEqual(plan.SalesGoal, previousSalesGoal);
+                Assert.Greater(plan.RevenueGoal, 0);
+                Assert.Greater(plan.Rent, 0);
+                Assert.Greater(plan.GoalBonus, 0);
+                Assert.Greater(plan.DeliverySeconds, 0f);
+                previousSalesGoal = plan.SalesGoal;
+            }
+        }
+
+        [Test]
+        public void CampaignDemandWeightsFocusProducts()
+        {
+            var plan = CampaignRules.Get(1);
+            var whiteBread = Array.Find(catalog, product => product.Id == "bread_white");
+            var gum = Array.Find(catalog, product => product.Id == "gum");
+            Assert.Greater(plan.DemandWeight(whiteBread), plan.DemandWeight(gum));
+        }
+
+        [TestCase(90, 90000, 60, "home")]
+        [TestCase(70, 40000, 40, "warm-light")]
+        [TestCase(35, 12000, 15, "hard-autumn")]
+        public void CampaignEndingsAreDeterministic(int reputation, int cash, int sales, string expected)
+        {
+            var ending = CampaignRules.EndingId(reputation, cash, sales);
+            Assert.AreEqual(expected, ending);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(CampaignRules.EndingTitle(ending)));
+            Assert.IsFalse(string.IsNullOrWhiteSpace(CampaignRules.EndingText(ending)));
+        }
+
+        [Test]
+        public void ProceduralLoafMeshHasValidGeometry()
+        {
+            var mesh = ProceduralMeshFactory.CreateLoaf("Test loaf", .5f, .25f, .2f);
+            try
+            {
+                Assert.Greater(mesh.vertexCount, 100);
+                Assert.Greater(mesh.triangles.Length, 300);
+                Assert.Greater(mesh.bounds.size.x, .45f);
+                Assert.Greater(mesh.bounds.size.y, .15f);
+                Assert.Greater(mesh.bounds.size.z, .2f);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void ProceduralLatheAndTorusHaveNormalsAndBounds()
+        {
+            var bottle = ProceduralMeshFactory.CreateLathe(
+                "Bottle",
+                new[]
+                {
+                    new Vector2(.08f, 0f),
+                    new Vector2(.08f, .3f),
+                    new Vector2(.03f, .4f)
+                },
+                16);
+            var torus = ProceduralMeshFactory.CreateTorus("Ring", .1f, .03f, 16, 8);
+
+            try
+            {
+                Assert.AreEqual(bottle.vertexCount, bottle.normals.Length);
+                Assert.AreEqual(torus.vertexCount, torus.normals.Length);
+                Assert.Greater(bottle.bounds.size.y, .35f);
+                Assert.Greater(torus.bounds.size.x, .2f);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(bottle);
+                UnityEngine.Object.DestroyImmediate(torus);
             }
         }
     }
